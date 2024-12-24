@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, Literal
 
 import mobase
-
+from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
 from .utils import is_directory
 
 
@@ -172,45 +172,55 @@ class BasicModDataChecker(mobase.ModDataChecker):
         status = mobase.ModDataChecker.INVALID
 
         rp = self._regex_patterns
+        qDebug(f"Evaluating filetree {filetree.name()}")
         for entry in filetree:
             name = entry.name().casefold()
-
+            qDebug(f"Attempting match on {name}")
             if rp.unfold.match(name):
                 if is_directory(entry):
+                    qDebug(f"Unfolding {name}...")
                     status = self.dataLooksValid(entry)
                 else:
                     status = mobase.ModDataChecker.INVALID
                     break
             elif rp.valid.match(name):
+                qDebug(f"Got Valid match on {name}")
                 if status is mobase.ModDataChecker.INVALID:
                     status = mobase.ModDataChecker.VALID
             elif rp.delete.match(name) or rp.move_match(name) is not None:
+                qDebug(f"Got Delete match on {name}")
                 status = mobase.ModDataChecker.FIXABLE
             else:
+                qDebug(f"No match for {name}. status set to Invalid")
                 status = mobase.ModDataChecker.INVALID
                 break
         return status
 
     def fix(self, filetree: mobase.IFileTree) -> mobase.IFileTree:
         rp = self._regex_patterns
+        qDebug(f"Fixing filetree {filetree.name()}")
         for entry in list(filetree):
             name = entry.name()
 
             # unfold first - if this match, entry is a directory (checked in
             # dataLooksValid)
-            if rp.unfold.match(name):
+            if rp.unfold.match(name):    
+                qDebug(f"Fix: Unfolding {name}...")
                 assert is_directory(entry)
                 filetree.merge(entry)
                 entry.detach()
 
             elif rp.valid.match(name):
+                qDebug(f"Fix: {name} is valid")
                 continue
 
             elif rp.delete.match(name):
+                qDebug(f"Fix: {name} will be deleted")
                 entry.detach()
 
             elif (move_key := rp.move_match(name)) is not None:
                 target = self._file_patterns.move[move_key]
+                qDebug(f"Fix: {name} will be moved to {target}")
                 filetree.move(entry, target)
 
         return filetree
