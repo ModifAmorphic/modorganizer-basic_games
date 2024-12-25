@@ -205,7 +205,7 @@ class BasicModDataChecker(mobase.ModDataChecker):
 
             # unfold first - if this match, entry is a directory (checked in
             # dataLooksValid)
-            if rp.unfold.match(name):    
+            if rp.unfold.match(name):
                 qDebug(f"Fix: Unfolding {name}...")
                 assert is_directory(entry)
                 filetree.merge(entry)
