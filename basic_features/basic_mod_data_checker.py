@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from typing import Iterable, Literal
 
 import mobase
-from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
+from PyQt6.QtCore import qDebug
+
 from .utils import is_directory
 
 

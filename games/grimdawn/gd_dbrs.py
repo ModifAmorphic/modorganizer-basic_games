@@ -1,8 +1,9 @@
-from os import path
 import subprocess
 import threading
 from dataclasses import dataclass
+from os import path
 from typing import Callable
+
 # from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
 
 
@@ -38,11 +39,11 @@ class ModExtractor:
     
     def extract_databases(self, databases: list[str], absolute_out_path: str, callback: Callable[[ExtractStatus], None]):
         for db_path in databases:
-            callback(ExtractStatus(True, f"Extracting \"{db_path}\" to \"{absolute_out_path}\""))
+            callback(ExtractStatus(True, f'Extracting "{db_path}" to "{absolute_out_path}"'))
             process = subprocess.Popen([self._archive_tool, db_path, "-database", absolute_out_path])
             #TODO: Nice to have - Callback with updates so they can be displayed in mod organizer.
             process.wait()
-        callback(ExtractStatus(False, f"Extraction of Grim Dawn Databases complete."))
+        callback(ExtractStatus(False, "Extraction of Grim Dawn Databases complete."))
         
     
     # def extract_resources(self, resource_paths: list[str], )

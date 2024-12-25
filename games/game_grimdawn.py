@@ -1,25 +1,23 @@
-from os import path, PathLike
-from pathlib import Path
 import shutil
-from typing import (
-    Sequence,
-    Union
- )
+from os import path
+from pathlib import Path
+
 import PyQt6.QtWidgets
-from PyQt6.QtCore import QDir, QFileInfo, qInfo, qDebug #, qFatal, qCritical, qWarning
-import mobase
 from mobase import (
+    ExecutableForcedLoadSetting,
+    ExecutableInfo,
+    # FileTreeEntry,
+    IModInterface,
     # ModDataChecker,
     # IFileTree,
     IOrganizer,
-    # FileTreeEntry,
-    IModInterface,
     ModState,
-    ExecutableInfo,
-    ExecutableForcedLoadSetting
 )
+from PyQt6.QtCore import QDir, QFileInfo, qDebug, qInfo  #, qFatal, qCritical, qWarning
+
 from ..basic_game import BasicGame
-from .grimdawn import ModExtractor, ExtractStatus, GrimDawnModDataChecker
+from .grimdawn import ExtractStatus, GrimDawnModDataChecker, ModExtractor
+
 
 class GrimDawnGame(BasicGame):
 
