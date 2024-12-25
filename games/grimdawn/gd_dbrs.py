@@ -1,21 +1,19 @@
 from os import path
 import subprocess
 import threading
+from dataclasses import dataclass
 from typing import Callable
-from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
+# from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
 
 
 class dbr:
     def __init__(self, relative_path: str, dbdata: dict[str, str]):
         self.relative_path = relative_path
 
+@dataclass
 class ExtractStatus:
     _is_running: bool
     _status_msg: str
-
-    def __init__(self, is_running: bool, status_msg: str):
-        self._is_running = is_running
-        self._status_msg = status_msg
 
     def is_running(self) -> bool:
         return self._is_running

@@ -6,52 +6,26 @@ from typing import (
     Union
  )
 import PyQt6.QtWidgets
-from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
+from PyQt6.QtCore import QDir, QFileInfo, qInfo, qDebug #, qFatal, qCritical, qWarning
 import mobase
 from mobase import (
-    ModDataChecker,
-    IFileTree,
+    # ModDataChecker,
+    # IFileTree,
     IOrganizer,
-    FileTreeEntry,
+    # FileTreeEntry,
     IModInterface,
     ModState,
     ExecutableInfo,
     ExecutableForcedLoadSetting
 )
 from ..basic_game import BasicGame
-from ..basic_features import BasicModDataChecker, GlobPatterns
-from .grimdawn import dbrs
-import fnmatch
-from .grimdawn.mod_data_checker import GrimDawnModDataChecker
-
-# from datetime import datetime
-
-class GrimDawnBaseMods(mobase.UnmanagedMods):
-    _base_mods = {  
-        'survivalmode': 'survivalmode',
-        'survivalmode1': 'survivalmode1',
-        'survivalmode2': 'survivalmode2',
-        'gtx1': 'Ashes of Malmouth',
-        'gtx2': 'Forgotten Gods',
-    }
-    def displayName(self, mod_name: str) -> str:
-        if mod_name in self._base_mods:
-            return self._base_mods[mod_name]
-        return ""
-    def referenceFile(self, mod_name: str) -> str:
-        return ""
-    def mods(self, official_only: bool) -> Sequence[str]:
-        return ["survivalmode", "survivalmode1", "survivalmode2"]
-    def secondaryFiles(self, mod_name: str) -> Sequence[Union[str, PathLike[str], QFileInfo]]:
-        return []
-
+from .grimdawn import ModExtractor, ExtractStatus, GrimDawnModDataChecker
 
 class GrimDawnGame(BasicGame):
 
     Name = "Grim Dawn Support Plugin"
     Author = "ModifAmorphic"
     Version = "0.0.1"
-
     GameName = "Grim Dawn"
     GameShortName = "grimdawn"
     GameBinary = "Grim Dawn.exe"
@@ -72,8 +46,6 @@ class GrimDawnGame(BasicGame):
         super().init(organizer)
         qDebug("Registering feature GrimDawnModDataChecker()")
         self._register_feature(GrimDawnModDataChecker())
-        pattern = fnmatch.translate("*.tex")
-        qDebug(f"Pattern: {pattern}")
         qInfo(f"{self.GameName} plugin init. basePath: {organizer.basePath()}, Data directory: {self.dataDirectory().absolutePath()}, PluginDataPath: {organizer.pluginDataPath()}, downloadsPath: {organizer.downloadsPath()}")
 
         self._game_data_path = path.join(organizer.pluginDataPath(), self.GameShortName)
@@ -124,12 +96,12 @@ class GrimDawnGame(BasicGame):
     
     def unpack(self, main_window: PyQt6.QtWidgets.QMainWindow):
         # dbrs.extract_grimdawn(self.gameDirectory().absolutePath(), self._db_dir)
-        extractor = dbrs.ModExtractor(self.gameDirectory().absolutePath(), self._game_data_path)
+        extractor = ModExtractor(self.gameDirectory().absolutePath(), self._game_data_path)
         qInfo(f"Unpacking {self.GameName} databases to {extractor.GameExtractPath}")
         extractor.extract_grimdawn(self.on_extractor_update)
 
     #TODO: Remove this once the callers can handle their own events
-    def on_extractor_update(self, status: dbrs.ExtractStatus):
+    def on_extractor_update(self, status: ExtractStatus):
         qInfo(status.status())
 
     def executables(self):

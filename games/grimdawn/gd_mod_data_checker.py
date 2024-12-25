@@ -1,9 +1,6 @@
 from dataclasses import dataclass
-import os
-import pathlib
 from collections.abc import Generator
-from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
-import mobase
+from PyQt6.QtCore import qInfo, qDebug #, QDir, QFileInfo, qFatal, qCritical, qWarning
 from ...basic_features import BasicModDataChecker
 from enum import Enum
 
@@ -47,22 +44,11 @@ class GrimDawnModDataChecker(BasicModDataChecker):
 
     _REGEX_DIR_SEP = '/'
     _always_validate: set[str] = { "", "overwrite" }
-    _valid_root_folders: set[str] = {
-        "mods",
-        "settings"
-    }
-    # ^(?!.*%).*$
+
     # Dictionary containing
-    #  - Regular Expression used to find valid mod files
+    #  - Regular Expression used to find valid mod files that can be moved
     #  - The destination location of where the files should be placed to fix the mod
     # This dictionary is used to determine if a mod is fixable, and if so how to fix it
-
-    _find_text_dir = re.compile(r'(?:^|(?<=/))(text_[a-zA-Z]{2})(?=/)(.*)', re.IGNORECASE)
-    _settings_find_paths = {
-        "text_": re.compile(r'(?<=/)(text_[a-zA-Z]{2})(?=/)(.*)', re.IGNORECASE),
-        "ui": re.compile(r'(?:^|(?<=/))(ui)(?=/)(.*\.(tex|psd))', re.IGNORECASE),
-        "ui": re.compile(r'(?:^|(?<=/))(fonts)(?=/)(.*\.(bmp|fnt|ttf|txt))', re.IGNORECASE),
-    }
     _fixable_paths: dict[re.Pattern[str], str] = {
         re.compile(r'^.*\.arz$', re.IGNORECASE): 'mods/{{mod_folder}}/database',
         re.compile(r'^(?:.*/)?templates.arc$', re.IGNORECASE): 'mods/{{mod_folder}}/database',
@@ -96,23 +82,6 @@ class GrimDawnModDataChecker(BasicModDataChecker):
         re.compile(r'^settings/ui/.*$', re.IGNORECASE),
         re.compile(r'^(?!.*/).*\.dll$', re.IGNORECASE)
     }
-
-    # _required_mod_folders: set[str] = {
-    #     "database",
-    #     "records"
-    # }
-    # _settings_folder = "settings"
-    # _dir_regex = '([a-zA-Z0-9-_]+)+'
-    # _dir_pattern = re.compile(rf'{_dir_regex}')
-    # _archive_exts: dict[str, str] = {
-    #     ".arz": 'mods/{{mod_folder}}/database',
-    #     ".arc": 'mods/{{mod_folder}}/resources',
-    # }
-    # _archive_regex: dict[str, re.Pattern[str]] = {
-    #     ".arz": re.compile(rf'mods/{_dir_regex}/database'),
-    #     ".arc": re.compile(rf'mods/{_dir_regex}/resources')
-    # }
-
 
     def __init__(self):
         super().__init__()
@@ -180,7 +149,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
             ModFileTree: A ModFileTree instance containing the IFileTree and MatchResult values for the yielded IFileTree entry.
         """
         for entry in filetree:
-            qDebug(f"getNextFileEntry: filetree={filetree.path(self._REGEX_DIR_SEP)}, return_empty_dirs={return_empty_dirs}")
+            # qDebug(f"getNextFileEntry: filetree={filetree.path(self._REGEX_DIR_SEP)}, return_empty_dirs={return_empty_dirs}")
             if entry is not None:
                 if entry.isDir():
                     assert entry is IFileTree
@@ -270,7 +239,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
         
         for modEntry in self.getNextFileEntry(filetree):
             m_path = modEntry.entry.path(self._REGEX_DIR_SEP)
-            qDebug(f"dataLooksValid: Determining Entry \"{m_path}\" validity.")
+            # qDebug(f"dataLooksValid: Determining Entry \"{m_path}\" validity.")
             if modEntry.matchResult == MatchResult.UNKNOWN:
                 # Found an unexpected file or path. Return invalid and get out of here
                 qDebug(f"dataLooksValid() Unknown file \"{m_path}\" found. Returning status {ModDataChecker.INVALID}")
@@ -297,7 +266,6 @@ class GrimDawnModDataChecker(BasicModDataChecker):
         moves: list[ModFileTree] = []
 
         for mod_tree in self.getNextFileEntry(filetree):
-            # detach empty 
             # m_path = mod_tree.entry.path(self._REGEX_DIR_SEP)
             # qDebug(f"Fix: Processing entry {m_path}")
             if mod_tree.matchResult == MatchResult.DELETE:
@@ -312,7 +280,6 @@ class GrimDawnModDataChecker(BasicModDataChecker):
             d.detach()
         
         for m in moves:
-            # directory_path = m.fixPath.replace('{{mod_folder}}', root_mod_folder)
             qDebug(f"Moving file \"{m.entry.path(self._REGEX_DIR_SEP)}\" to \"{m.fixPath}\".")
             filetree.move(m.entry, m.fixPath)
         
