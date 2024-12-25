@@ -74,58 +74,27 @@ class GrimDawnGame(BasicGame):
         self._register_feature(GrimDawnModDataChecker())
         pattern = fnmatch.translate("*.tex")
         qDebug(f"Pattern: {pattern}")
-        # self._register_feature(
-        #     BasicModDataChecker(
-        #         GlobPatterns(
-        #             # unfold=[
-        #             #     "database",
-        #             #     "resources"
-        #             # ],
-        #             valid=[
-        #                 "database",
-        #                 "resources",
-        #                 "*.arz",
-        #                 "*.arc",
-        #                 "DPYes.dll",
-        #                 "settings"
-        #             ],
-        #             delete=[
-        #                 "*.dbr",
-        #                 "*.tex",
-        #                 "caravaner",
-        #                 "records"
-        #             ],
-        #             # move={
-        #             #     "DPYes.dll": ".",
-        #             #     "*.arz": "mods/database/",
-        #             #     "*.arc": "mods/resources/"
-        #             # },
-        #         )
-        #     )
-        # )
-        # self._register_feature(GrimDawnBaseMods())
         qInfo(f"{self.GameName} plugin init. basePath: {organizer.basePath()}, Data directory: {self.dataDirectory().absolutePath()}, PluginDataPath: {organizer.pluginDataPath()}, downloadsPath: {organizer.downloadsPath()}")
-        # with open(os.path.join(organizer.basePath(), "grimdawn.log"), "a") as logfile:
-        #     ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        #     logfile.write(f"{ts}: Grim Dawn plugin init\n")
+
         self._game_data_path = path.join(organizer.pluginDataPath(), self.GameShortName)
         self._mods_unpack_path = path.join(self._game_data_path, "mods")
         self._db_dir = path.join(self._game_data_path, "game_data", "database")
         self._resources_dir = path.join(self._game_data_path, "game_data", "resources")
         Path(self._db_dir).mkdir(parents=True,exist_ok=True)
         Path(self._resources_dir).mkdir(parents=True,exist_ok=True)
+
         # organizer.onUserInterfaceInitialized(self.unpack)
         # organizer.onAboutToRun(self._onAboutToRun)
-        # organizer.modList().onModStateChanged(self._onModStateChanged)
-        # organizer.modList().onModInstalled(self._onModInstalled)
-        # organizer.modList().onModRemoved(self._onModRemoved)
+        organizer.modList().onModStateChanged(self._onModStateChanged)
+        organizer.modList().onModInstalled(self._onModInstalled)
+        organizer.modList().onModRemoved(self._onModRemoved)
         # organizer.onPluginEnabled(mobase.WizardInstaller)
         
         return True
     # When a new mod is installed, extract everything and..
     # - for databases: create "diff" files that only include changes from the unmodded game files
     def _onModInstalled(self, mod: IModInterface):
-        qInfo(f"Mod {mod.name()} installed")
+        qInfo(f"Mod {mod.name()} installed. Unpacking mod files")
         mod_unpack_path = path.join(self._mods_unpack_path, mod.name())
         Path(mod_unpack_path).mkdir(parents=True,exist_ok=True)
             # ft = mod.fileTree()
@@ -136,7 +105,8 @@ class GrimDawnGame(BasicGame):
     def _onModRemoved(self, mod_name: str):
         qInfo(f"Mod {mod_name} removed")
         mod_unpack_path = path.join(self._mods_unpack_path, mod_name)
-        shutil.rmtree(mod_unpack_path)
+        if Path(mod_unpack_path).exists():
+            shutil.rmtree(mod_unpack_path)
         # TODO: Cleanup 
     # When a mod is activated, 
     def _onModStateChanged(self, mod_states: dict[str, ModState]):

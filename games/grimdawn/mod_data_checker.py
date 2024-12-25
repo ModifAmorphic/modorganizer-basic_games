@@ -1,9 +1,11 @@
-from os import path
-from pathlib import Path
+from dataclasses import dataclass
+import os
+import pathlib
 from collections.abc import Generator
 from PyQt6.QtCore import QDir, QFileInfo, qFatal, qCritical, qWarning, qInfo, qDebug
 import mobase
 from ...basic_features import BasicModDataChecker
+from enum import Enum
 
 from mobase import (
     ModDataChecker,
@@ -12,6 +14,7 @@ from mobase import (
 )
 import re
 
+@dataclass
 class ModFileStatus:
     HasValidFiles: bool = False
     HasInvalidParents: bool = False
@@ -19,192 +22,191 @@ class ModFileStatus:
     IsUnknown: bool = False
     IsEmptyDir: bool = False
 
-    def __init__(self, hasValidFiles: bool = False, hasInvalidParents: bool = False, hasDeletes: bool = False, isUnknown: bool = False, isEmptyDir: bool = False):
-        self.HasValidFiles = hasValidFiles
-        self.HasInvalidParents = hasInvalidParents
-        self.HasDeletes = hasDeletes
-        self.IsUnknown = isUnknown
-        self.IsEmptyDir = isEmptyDir
+class MatchResult(Enum):
+    VALID = 1
+    FIXABLE = 2
+    DELETE = 3
+    EMPTY_DIR = 4
+    UNKNOWN = 5
 
+@dataclass
 class ModFileTree:
-    Status: ModFileStatus
-    Entry: FileTreeEntry
+    """Class encapsulating a FileTreeEntry, it's MatchResult and 'fixPath' if applicable.
+
+    Args:
+        entry (FileTreeEntry): The FileTreeEntry the match was performed on.
+        matchResult (MatchResult): Result of a match performed on the entry (FileTreeEntry) argument.
+        fixPath (str): The path for a MatchResult.FIXABLE matchResult which if moved to would result in the entry (FileTreeEntry) being fixed (MatchResult.VALID) on the next match attempt.
+    """
+    entry: FileTreeEntry
+    matchResult: MatchResult = MatchResult.UNKNOWN
+    fixPath: str = ''
+
 
 class GrimDawnModDataChecker(BasicModDataChecker):
 
+    _REGEX_DIR_SEP = '/'
     _always_validate: set[str] = { "", "overwrite" }
-    _valid_root_folders = {
+    _valid_root_folders: set[str] = {
         "mods",
         "settings"
     }
-    _delete_files = {
-        re.compile(r'.*\.tex$'),
-        re.compile(r'.*\.dbr$'),
-        re.compile(r'^templates.arc$'),
-    }
-    _required_mod_folders = {
-        "database",
-        "records"
-    }
+    # ^(?!.*%).*$
     # Dictionary containing
     #  - Regular Expression used to find valid mod files
-    #  - The destination location of the mod files
+    #  - The destination location of where the files should be placed to fix the mod
     # This dictionary is used to determine if a mod is fixable, and if so how to fix it
-    _search_paths = {
-        re.compile(r'(?:.*/)?([a-zA-Z0-9-_.]+)+.arz$'): 'mods/{{mod_folder}}/database',
-        re.compile(r'(?:.*/)?templates.arc$'): 'mods/{{mod_folder}}/database',
-        re.compile(r'(?:.*/)?([a-zA-Z0-9-_.]+)+.arc$'): 'mods/{{mod_folder}}/resources',
-        re.compile(r'(?:.*/)?videos/([a-zA-Z0-9-_.]+)+$'): 'mods/{{mod_folder}}/videos',
-        re.compile(r'(?:.*/)?text_[a-zA-Z]{2}$'): 'settings',
-        re.compile(r'(?:.*/)?([a-zA-Z0-9-_.]+)+.dll$'): ''
+
+    _find_text_dir = re.compile(r'(?:^|(?<=/))(text_[a-zA-Z]{2})(?=/)(.*)', re.IGNORECASE)
+    _settings_find_paths = {
+        "text_": re.compile(r'(?<=/)(text_[a-zA-Z]{2})(?=/)(.*)', re.IGNORECASE),
+        "ui": re.compile(r'(?:^|(?<=/))(ui)(?=/)(.*\.(tex|psd))', re.IGNORECASE),
+        "ui": re.compile(r'(?:^|(?<=/))(fonts)(?=/)(.*\.(bmp|fnt|ttf|txt))', re.IGNORECASE),
+    }
+    _fixable_paths: dict[re.Pattern[str], str] = {
+        re.compile(r'^.*\.arz$', re.IGNORECASE): 'mods/{{mod_folder}}/database',
+        re.compile(r'^(?:.*/)?templates.arc$', re.IGNORECASE): 'mods/{{mod_folder}}/database',
+        re.compile(r'^.*\.arc$', re.IGNORECASE): 'mods/{{mod_folder}}/resources',
+        re.compile(r'^(?:.*/)?video/(?!.*/).*$', re.IGNORECASE): 'mods/{{mod_folder}}/video',
+        re.compile(r'(?:^|(?<=/))(text_[a-zA-Z]{2})(?=/)(.*)', re.IGNORECASE): 'settings',
+        re.compile(r'(?:^|(?<=/))(ui)(?=/)(.*\.(tex|psd))', re.IGNORECASE): "settings",
+        re.compile(r'(?:^|(?<=/))(fonts)(?=/)(.*\.(bmp|fnt|ttf|txt))', re.IGNORECASE): "settings",
+        re.compile(r'^.*\.dll$', re.IGNORECASE): ''
+    }
+
+    # Regular expression List of paths / files that are commonly added to mods but are safe to delete
+    _delete_paths: set[re.Pattern[str]] = {
+        re.compile(r'(^|/)resources/.*\.tex$', re.IGNORECASE),
+        re.compile(r'(^|/)database/.*\.dbr$', re.IGNORECASE),
+        re.compile(r'^.*\.7z$', re.IGNORECASE),
+        re.compile(r'^.*\.rar$', re.IGNORECASE),
+        re.compile(r'^.*\.zip$', re.IGNORECASE),
+        re.compile(r'^(?:.*/)?(README|CHANGELOG).txt$', re.IGNORECASE),
+        re.compile(r'^(?!.*/).*\.txt$', re.IGNORECASE)
     }
 
     # Used to validate a mod. All files in the mod must match one of these regular expressions
-    _valid_paths = [
-        re.compile(r'^mods/([a-zA-Z0-9-_.]+)+/database/([a-zA-Z0-9-_.]+)+.arz$'),
-        re.compile(r'^mods/([a-zA-Z0-9-_.]+)+/database/templates.arc$'),
-        re.compile(r'^mods/([a-zA-Z0-9-_.]+)+/resources/([a-zA-Z0-9-_.]+)+.arc$'),
-        re.compile(r'^mods/([a-zA-Z0-9-_.]+)+/videos/([a-zA-Z0-9-_.]+)+$'),
-        re.compile(r'^settings/text_[a-zA-Z]{2}$'),
-        re.compile(r'^([a-zA-Z0-9-_.]+)+.dll$')
-    ]
-    
-    _settings_folder = "settings"
-    _dir_regex = '([a-zA-Z0-9-_]+)+'
-    _dir_pattern = re.compile(rf'{_dir_regex}')
-    _archive_exts: dict[str, str] = {
-        ".arz": 'mods/{{mod_folder}}/database',
-        ".arc": 'mods/{{mod_folder}}/resources',
-    }
-    _archive_regex: dict[str, re.Pattern[str]] = {
-        ".arz": re.compile(rf'mods/{_dir_regex}/database'),
-        ".arc": re.compile(rf'mods/{_dir_regex}/resources')
+    _valid_paths: set[re.Pattern[str]]  = {
+        re.compile(r'^mods/[^/]+/database/(?!.*/).*\.arz$', re.IGNORECASE),
+        re.compile(r'^mods/[^/]+/database/templates.arc$', re.IGNORECASE),
+        re.compile(r'^mods/[^/]+/resources/(?!.*/).*\.arc$', re.IGNORECASE),
+        re.compile(r'^mods/[^/]+/video/(?!.*/).*$', re.IGNORECASE),
+        re.compile(r'^settings/text_[a-zA-Z]{2}/.*$', re.IGNORECASE),
+        re.compile(r'^settings/fonts/.*$', re.IGNORECASE),
+        re.compile(r'^settings/ui/.*$', re.IGNORECASE),
+        re.compile(r'^(?!.*/).*\.dll$', re.IGNORECASE)
     }
 
-    # _archive_exts: list[str] = [
-    #     ".arz",
-    #     ".arc"
-    # ]
+    # _required_mod_folders: set[str] = {
+    #     "database",
+    #     "records"
+    # }
+    # _settings_folder = "settings"
+    # _dir_regex = '([a-zA-Z0-9-_]+)+'
+    # _dir_pattern = re.compile(rf'{_dir_regex}')
+    # _archive_exts: dict[str, str] = {
+    #     ".arz": 'mods/{{mod_folder}}/database',
+    #     ".arc": 'mods/{{mod_folder}}/resources',
+    # }
+    # _archive_regex: dict[str, re.Pattern[str]] = {
+    #     ".arz": re.compile(rf'mods/{_dir_regex}/database'),
+    #     ".arc": re.compile(rf'mods/{_dir_regex}/resources')
+    # }
+
 
     def __init__(self):
         super().__init__()
     
-    def isValidFile(self, filetree: FileTreeEntry) -> bool:
-        ext = Path(filetree.name()).suffix.casefold()
-        # qDebug(f"Checking if file {filetree.name()} matches valid file criteria.")
-        if ext in self._archive_exts: 
-            qDebug(f"File {filetree.name()} matches valid file criteria.")
-            return True
+    _root_folder: str = ''
+    def modRootFolder(self):
+        return self._root_folder
 
-        if self.isSettingsFile(filetree):
-            qDebug(f"File {filetree.name()} matches settings file criteria.")
-            return True
-        return False
-    
-    def isDeletedFile(self, filetree: FileTreeEntry) -> bool:
-        name = filetree.name().casefold()
-        # qDebug(f"Checking if file {name} matches criteria for deletion.")
-        for r in self._delete_files:
-            if r.match(name):
-                qDebug(f"File {name} matched criteria for deletion.")
-                return True
-        
-        return False
-    
-    def getParentPath(self, entry: FileTreeEntry) -> str:
-        if entry.isDir():
-            qWarning(f"Attempted to find parent path of directory '{entry.path()}'")
-            return ''
-        
-        ext = Path(entry.name()).suffix.casefold()
-
-        if ext in self._archive_exts:
-            full_path = entry.path('/').casefold()
-            if self._archive_regex[ext].match(full_path):
-                return path.dirname(full_path)
-            else:
-                mod_folder = full_path.split('/')[0]
-                return self._archive_exts[ext].replace('{{mod_folder}}', mod_folder)
-
-            # return self._archive_exts[ext]
-        
-        if self.isSettingsFile(entry):
-            full_path = entry.path('/').casefold()
-            directories = full_path.split('/')
-            settings_flag = False
-            settings_dirs: list[str] = []
-            for d in directories:
-                if d == self._settings_folder:
-                    settings_flag = True
-                if settings_flag:
-                    settings_dirs.append(d)
-            
-            settings_dirs.pop(-1)
-            return str.join('/', settings_dirs)
+    def getFixedPath(self, fpath: re.Match[str]) -> str:
         return ''
-    
-    def isSettingsFile(self, filetree: FileTreeEntry):
-        full_path = filetree.path('/').casefold()
-        if full_path.startswith(self._settings_folder + "/"):
-            return True
-        if ("/" + self._settings_folder + "/") in full_path:
-            return True
-        return False
-    
-    def isParentValid(self, filetree: FileTreeEntry) -> bool:
-        ext = Path(filetree.name()).suffix.casefold()
-        full_path = filetree.path('/').casefold()
-        parent = filetree.parent()
-        parent_dir = ""
-        if parent is not None:
-            parent_dir = full_path
-        
-        if ext in self._archive_exts:
-            # qDebug(f"Checking if parent path \"{parent_dir}\" of entry {filetree.name()} is a valid path.")
-            if self._archive_regex[ext].match(parent_dir):
-                # qDebug(f"Parent path \"{parent_dir}\" is a valid path.")
-                return True
-            
-        if full_path.startswith(self._settings_folder + "/"):
-            qDebug(f"Found valid settings file path in \"{full_path}\".")
-            return True
-        
-        return False
-    
-    def getFileStatus(self, file_entry: FileTreeEntry) -> ModFileStatus:
-        fStatus = ModFileStatus()
-        if self.isDeletedFile(file_entry):
-            fStatus.HasDeletes = True
-        elif self.isValidFile(file_entry):
-            fStatus.HasValidFiles = True
-            if not self.isParentValid(file_entry):
-                fStatus.HasInvalidParents = True
-        else:
-            fStatus.IsUnknown = True
-        
-        return fStatus
 
+    # Performs a match against various regex collections to determine a match status
+    def match(self, filetree: FileTreeEntry) -> tuple[MatchResult, str]:
+        """Performs regular expression matches using the FileTreeEntry's path() against various collections to determine if the entry is a valid or fixable mod file.
+
+        Args:
+            filetree (IFileTree): The filetree to perform regular expression matches against.
+        
+        Returns:
+            tuple[MatchResult, str]: MatchResult - The result of the potential multiple regex matches executed on the filetree.path(). str - fix path set for MatchResult.FIXABLE results.
+        """
+        f_path = filetree.path(self._REGEX_DIR_SEP)
+        qDebug(f"Performing matches on path '{f_path}'")
+        if filetree.isDir() and type(filetree) is IFileTree:
+            if not len(filetree):
+                return MatchResult.EMPTY_DIR, ''
+        
+        for r in self._delete_paths:
+            if r.search(f_path):
+                qDebug(f"Path {f_path} matched criteria for deletion.")
+                return MatchResult.DELETE, ''
+         
+        for r in self._valid_paths:
+            if r.search(f_path):
+                qDebug(f"Path {f_path} matched valid path criteria.")
+                return MatchResult.VALID, ''
+            
+        for r in self._fixable_paths:
+            sresult = r.search(f_path)
+            if sresult:
+                fix_path: str = self._fixable_paths[r].replace("{{mod_folder}}", self.modRootFolder())
+                qDebug(f"Path {f_path} matched fixable path criteria. Raw fix_path=\"{self._fixable_paths[r]}\", Mod fix_path={fix_path}.")
+                if fix_path == "settings":
+                    # qDebug(f"Group 0: {lang_result.groups()[0]}, Group 1: {len(lang_result.groups()[1])}")
+                    # Match includes filename
+                    fix_path = self._fixable_paths[r] + self._REGEX_DIR_SEP + sresult[0]
+                else:
+                    # Append filename to path if not a settings file. Setting filename would already be appended.
+                    qDebug(f"Joining \"{fix_path}\" path with filename \"{filetree.name()}\".")
+                    fix_path = fix_path + self._REGEX_DIR_SEP + filetree.name()
+                qDebug(f"Set fix_path to =\"{fix_path}\"")
+                return MatchResult.FIXABLE, fix_path
+            
+        return MatchResult.UNKNOWN, ''
+    
     # Get's the next File entry in a tree. If the directory is empty, then returns that instead
     def getNextFileEntry(self, filetree: IFileTree, return_empty_dirs: bool = False) -> Generator[ModFileTree, None, None]:
-        tree: ModFileTree = ModFileTree()
-                
-        for entry in filetree:
-            if entry is not None:
-                if entry.isDir() and type(entry) is IFileTree:
-                    if len(entry) or return_empty_dirs == False:
-                        # qDebug(f"Skipping return of directory {entry.name()}. Directory has children={len(entry)}, return_empty_dirs=={return_empty_dirs}")
-                        yield from self.getNextFileEntry(entry, return_empty_dirs)
-                    else:
-                        tree.Entry = entry
-                        tree.Status = ModFileStatus(False, False, False, False, True)
-                        # qDebug(f"Return empty directory {entry.name()}")
-                        yield tree
-                else:
-                    tree.Entry = entry
-                    tree.Status = self.getFileStatus(entry)
-                    yield tree 
+        """Iterates through an IFileTree getting the next file entry. Each file entry is tested for a match and the result is returned alongside the file entry.
 
+        Args:
+            filetree (IFileTree): The filetree to traverse.
+            return_empty_dirs (bool): Optional. When True, will return empty directories in addition to files. Otherwise, empty directories are skipped.
+        
+        Returns:
+            ModFileTree: A ModFileTree instance containing the IFileTree and MatchResult values for the yielded IFileTree entry.
+        """
+        for entry in filetree:
+            qDebug(f"getNextFileEntry: filetree={filetree.path(self._REGEX_DIR_SEP)}, return_empty_dirs={return_empty_dirs}")
+            if entry is not None:
+                if entry.isDir():
+                    assert entry is IFileTree
+                    if len(entry):
+                        yield from self.getNextFileEntry(entry, return_empty_dirs)
+                    elif return_empty_dirs:
+                        result, fixpath = self.match(entry)
+                        mod_tree = ModFileTree(entry, result, fixpath)
+                        yield mod_tree
+                    else:
+                        yield from self.getNextFileEntry(entry, return_empty_dirs)
+                else:
+                    result, fixpath = self.match(entry)
+                    mod_tree = ModFileTree(entry, result, fixpath)
+                    yield mod_tree
+
+    # Gets the root of the filetree
     def getTreeRoot(self, filetree: IFileTree) -> IFileTree:
+        """Climbs the IFileTree until it finds the first / topmost entry.
+
+        Args:
+            filetree (IFileTree): The filetree to traverse.
+        
+        Returns:
+            IFileTree: The root / topmost parent IFileTree.
+        """
         parent: IFileTree | None = filetree
         root: IFileTree = parent
 
@@ -216,52 +218,32 @@ class GrimDawnModDataChecker(BasicModDataChecker):
                 root = parent
         
         return root
-
-    def dataLooksValid(self, filetree: IFileTree) -> ModDataChecker.CheckReturn:
-        qDebug(f"dataLooksValid: path=\"{filetree.path()}\", name=\"{filetree.name()}\"")
-        if filetree.isDir() and filetree.path() not in self._always_validate:
-             return ModDataChecker.FIXABLE
-        
-        qDebug(f"dataLooksValid: Scanning Filetree \"{filetree.path()}\"!")
-        
-        root = self.getTreeRoot(filetree)
-        file_statuses = ModFileStatus()
-        for modEntry in self.getNextFileEntry(root):
-            qDebug(f"dataLooksValid: Determining Entry \"{modEntry.Entry.path()}\" validity.")
-            if modEntry.Status.IsUnknown:
-                # Found an unexpected file or path. Return invalid and get out of here
-                return ModDataChecker.INVALID 
-            if modEntry.Status.HasDeletes:
-                file_statuses.HasDeletes = True
-            if modEntry.Status.HasValidFiles:
-                file_statuses.HasValidFiles = True
-            if modEntry.Status.HasInvalidParents:
-                file_statuses.HasInvalidParents = True
-
-        if not file_statuses.HasValidFiles:
-            qDebug(f"dataLooksValid() Returning status {ModDataChecker.INVALID}")
-            return ModDataChecker.INVALID
-        elif file_statuses.HasDeletes or file_statuses.HasInvalidParents:
-            qDebug(f"dataLooksValid() Returning status {ModDataChecker.FIXABLE}. HasDeletes={file_statuses.HasDeletes}, HasInvalidParents={file_statuses.HasInvalidParents}")
-            return ModDataChecker.FIXABLE
-        else:
-            qDebug(f"dataLooksValid() Returning status {ModDataChecker.VALID}")
-            return ModDataChecker.VALID
-        
+    
+    # Detaches empty directories from the filetree
     def pruneEmptyDirs(self, filetree: IFileTree, recursive: bool = False):
-        qDebug(f"Pruning empty directories from path {filetree.path()}. recursive={recursive}")
+        """Detaches empty directories from a IFileTree.
+
+        Args:
+            filetree (IFileTree): The filetree to prune empty directories from.
+            recursive (recursive): If True, will recursively prune the filetree until no empty directories remain. Otherwise only prunes empty directories once.
+        """
+
+        qDebug(f"Pruning empty directories from path {filetree.path(self._REGEX_DIR_SEP)}. recursive={recursive}")
         detaches: list[FileTreeEntry] = []
         tree = filetree
         if recursive:
             tree = self.getTreeRoot(filetree)
 
-        for entry in self.getNextFileEntry(tree, True):
+        # Gather a list of empty folders to detach
+        for mod_tree in self.getNextFileEntry(tree, True):
             # detach empty directory
-            qDebug(f"Checking if entry \"{entry.Entry.name()}\", path=\"{entry.Entry.path()}\" is an empty directory.")
-            if entry.Entry.isDir() and entry.Entry.name() != "":
-                qDebug(f"Queuing Empty Directory {entry.Entry.path()} ({entry.Entry.name()}) for removal.")
-                detaches.append(entry.Entry)
+            d_path = mod_tree.entry.path(self._REGEX_DIR_SEP)
+            # qDebug(f"Checking if entry \"{mod_tree.entry.name()}\", path=\"{d_path}\" is an empty directory.")
+            if mod_tree.entry.isDir() and mod_tree.entry.name() != "":
+                qDebug(f"Queuing Empty Directory {d_path} ({mod_tree.entry.name()}) for removal.")
+                detaches.append(mod_tree.entry)
         
+        # Detach any empy folders
         for d in detaches:
             d.detach()
         
@@ -272,50 +254,69 @@ class GrimDawnModDataChecker(BasicModDataChecker):
                 self.pruneEmptyDirs(tree, True)
                 
 
-    def fix(self, filetree: IFileTree) -> IFileTree:
-        qInfo(f"Fixing filetree {filetree.name()}")
-        detaches: list[FileTreeEntry] = []
-        moves: list[FileTreeEntry] = []
+    def dataLooksValid(self, filetree: IFileTree) -> ModDataChecker.CheckReturn:
+        # qDebug(f"dataLooksValid: path=\"{filetree.path(self._REGEX_DIR_SEP)}\", name=\"{filetree.name()}\"")
+        # Skips redundant checks from Mod Organizer
+        ftree_path = filetree.path(self._REGEX_DIR_SEP)
+        if filetree.isDir() and ftree_path not in self._always_validate:
+             return ModDataChecker.FIXABLE
+        
+        qDebug(f"dataLooksValid: Scanning Filetree \"{ftree_path}\"!")
+        self._root_folder = filetree.name()
+        if (filetree.name() == "" and len(filetree)):
+            self._root_folder = filetree[0].name()
+        # root = self.getTreeRoot(filetree)
+        return_status = ModDataChecker.INVALID
+        
+        for modEntry in self.getNextFileEntry(filetree):
+            m_path = modEntry.entry.path(self._REGEX_DIR_SEP)
+            qDebug(f"dataLooksValid: Determining Entry \"{m_path}\" validity.")
+            if modEntry.matchResult == MatchResult.UNKNOWN:
+                # Found an unexpected file or path. Return invalid and get out of here
+                qDebug(f"dataLooksValid() Unknown file \"{m_path}\" found. Returning status {ModDataChecker.INVALID}")
+                return ModDataChecker.INVALID 
+            if modEntry.matchResult == MatchResult.FIXABLE:
+                return_status = ModDataChecker.FIXABLE
+            if modEntry.matchResult == MatchResult.VALID and return_status == ModDataChecker.INVALID:
+                return_status = ModDataChecker.VALID
 
-        for entry in self.getNextFileEntry(filetree):
+        qDebug(f"dataLooksValid() returning status {return_status}")
+        return return_status
+
+    def fix(self, filetree: IFileTree) -> IFileTree:
+
+        root = self.getTreeRoot(filetree)
+        if len(root) and root.name() == "":
+            qDebug(f"root.name() is an empty string. Assigning first child.")
+            root = root[0]
+
+        root_mod_folder = root.name()
+
+        qInfo(f"Fixing filetree for mod folder '{root_mod_folder}'")
+        detaches: list[FileTreeEntry] = []
+        moves: list[ModFileTree] = []
+
+        for mod_tree in self.getNextFileEntry(filetree):
             # detach empty 
-            qDebug(f"Fix: Processing entry {entry.Entry.path()}")
-            if entry.Entry.isDir():
-                qDebug(f"Appending Empty Directory {entry.Entry.path()}.")
-                detaches.append(entry.Entry)
-            elif entry.Status.HasDeletes:
-                qDebug(f"Appending Entry to Delete {entry.Entry.path()}.")
-                detaches.append(entry.Entry)
-            elif entry.Status.HasInvalidParents:
-                moves.append(entry.Entry)
+            # m_path = mod_tree.entry.path(self._REGEX_DIR_SEP)
+            # qDebug(f"Fix: Processing entry {m_path}")
+            if mod_tree.matchResult == MatchResult.DELETE:
+                #qDebug(f"Queuing \"{m_path}\" for deletion.")
+                detaches.append(mod_tree.entry)
+            if mod_tree.matchResult == MatchResult.FIXABLE:
+                #qDebug(f"Queuing \"{m_path}\" for move.")
+                moves.append(mod_tree)
                 
         for d in detaches:
+            qDebug(f"Detaching \"{d.path(self._REGEX_DIR_SEP)}\".")
             d.detach()
         
         for m in moves:
-            directory_path = self.getParentPath(m)
-            qDebug(f"Moving {m.path()} to {directory_path}.")
-            filetree.move(m, f"{directory_path}/{m.name()}")
+            # directory_path = m.fixPath.replace('{{mod_folder}}', root_mod_folder)
+            qDebug(f"Moving file \"{m.entry.path(self._REGEX_DIR_SEP)}\" to \"{m.fixPath}\".")
+            filetree.move(m.entry, m.fixPath)
         
         
         self.pruneEmptyDirs(filetree, True)
-        # Recurse one final time, collecting any empy directories
-        # detaches: list[FileTreeEntry] = []
-        # root = self.getTreeRoot(filetree)
-        # for entry in self.getNextFileEntry(root, True):
-        #     # detach empty directory
-        #     if entry.Entry.isDir():
-        #         qDebug(f"Appending Empty Directory {entry.Entry.path()}.")
-        #         detaches.append(entry.Entry)
-        
-        # for d in detaches:
-        #     d.detach()
-        # root_removes: list[FileTreeEntry] = []
-        # for root in filetree:
-        #     if root.name() not in self._valid_root_folders:
-        #         root_removes.append(root)
-        
-        # for r in root_removes:
-        #     r.detach()
 
         return filetree
