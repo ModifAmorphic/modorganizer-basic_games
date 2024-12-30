@@ -98,13 +98,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
     def __init__(self):
         super().__init__()
 
-    _root_folder: str = ""
-
-    def modRootFolder(self):
-        return self._root_folder
-
-    def getFixedPath(self, fpath: re.Match[str]) -> str:
-        return ""
+    _mod_name_folder: str = ""
 
     # Performs a match against various regex collections to determine a match status
     def match(self, filetree: FileTreeEntry) -> tuple[MatchResult, str]:
@@ -136,7 +130,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
             sresult = r.search(f_path)
             if sresult:
                 fix_path: str = self._fixable_paths[r].replace(
-                    "{{mod_folder}}", self.modRootFolder()
+                    "{{mod_folder}}", self._mod_name_folder
                 )
                 qDebug(
                     f'Path {f_path} matched fixable path criteria. Raw fix_path="{self._fixable_paths[r]}", Mod fix_path={fix_path}.'
@@ -157,7 +151,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
         return MatchResult.UNKNOWN, ""
 
     # Get's the next File entry in a tree. If the directory is empty, then returns that instead
-    def getNextFileEntry(
+    def getNextFileTree(
         self, filetree: IFileTree, return_empty_dirs: bool = False
     ) -> Generator[ModFileTree, None, None]:
         """Iterates through an IFileTree getting the next file entry. Each file entry is tested for a match and the result is returned alongside the file entry.
@@ -174,13 +168,13 @@ class GrimDawnModDataChecker(BasicModDataChecker):
             if entry.isDir():
                 assert entry is IFileTree
                 if len(entry):
-                    yield from self.getNextFileEntry(entry, return_empty_dirs)
+                    yield from self.getNextFileTree(entry, return_empty_dirs)
                 elif return_empty_dirs:
                     result, fixpath = self.match(entry)
                     mod_tree = ModFileTree(entry, result, fixpath)
                     yield mod_tree
                 else:
-                    yield from self.getNextFileEntry(entry, return_empty_dirs)
+                    yield from self.getNextFileTree(entry, return_empty_dirs)
             else:
                 result, fixpath = self.match(entry)
                 mod_tree = ModFileTree(entry, result, fixpath)
@@ -225,7 +219,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
             tree = self.getTreeRoot(filetree)
 
         # Gather a list of empty folders to detach
-        for mod_tree in self.getNextFileEntry(tree, True):
+        for mod_tree in self.getNextFileTree(tree, True):
             # detach empty directory
             d_path = mod_tree.entry.path(self._REGEX_DIR_SEP)
             # qDebug(f"Checking if entry \"{mod_tree.entry.name()}\", path=\"{d_path}\" is an empty directory.")
@@ -255,13 +249,13 @@ class GrimDawnModDataChecker(BasicModDataChecker):
             return ModDataChecker.FIXABLE
 
         qDebug(f'dataLooksValid: Scanning Filetree "{ftree_path}"!')
-        self._root_folder = filetree.name()
+        self._mod_name_folder = filetree.name()
         if filetree.name() == "" and len(filetree):
-            self._root_folder = filetree[0].name()
+            self._mod_name_folder = filetree[0].name()
         # root = self.getTreeRoot(filetree)
         return_status = ModDataChecker.INVALID
 
-        for modEntry in self.getNextFileEntry(filetree):
+        for modEntry in self.getNextFileTree(filetree):
             m_path = modEntry.entry.path(self._REGEX_DIR_SEP)
             # qDebug(f"dataLooksValid: Determining Entry \"{m_path}\" validity.")
             if modEntry.matchResult == MatchResult.UNKNOWN:
@@ -292,7 +286,7 @@ class GrimDawnModDataChecker(BasicModDataChecker):
         detaches: list[FileTreeEntry] = []
         moves: list[ModFileTree] = []
 
-        for mod_tree in self.getNextFileEntry(filetree):
+        for mod_tree in self.getNextFileTree(filetree):
             # m_path = mod_tree.entry.path(self._REGEX_DIR_SEP)
             # qDebug(f"Fix: Processing entry {m_path}")
             if mod_tree.matchResult == MatchResult.DELETE:
