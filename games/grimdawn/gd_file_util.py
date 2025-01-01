@@ -2,9 +2,12 @@ from hashlib import blake2b
 from pathlib import Path
 from typing import Union
 
+
 class HashUtil:
     @staticmethod
-    def hash_file(file: Union[str, Path], hash: blake2b = blake2b(digest_size=32)) -> blake2b:
+    def hash_file(file: Union[str, Path], hash: blake2b | None = None) -> blake2b:
+        if not hash:
+            hash = blake2b(digest_size=32)
         with open(str(file), "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash.update(chunk)
@@ -12,9 +15,10 @@ class HashUtil:
 
     @staticmethod
     def hash_directory(directory: Union[str, Path], 
-                    hash: blake2b = blake2b(digest_size=32), recursive: bool = False) -> blake2b:
+                    hash: blake2b | None = None, recursive: bool = False) -> blake2b:
         assert Path(directory).is_dir()
-        hash = blake2b(digest_size=32)
+        if not hash:
+            hash = blake2b(digest_size=32)
         for path in sorted(Path(directory).iterdir(), key=lambda p: str(p).lower()):
             # qDebug(f"Hashing {path}")
             hash.update(path.name.encode())

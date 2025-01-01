@@ -78,24 +78,24 @@ class ModExtractInfo():
         return extract_info
 
     @staticmethod
-    def _map(source_data: dict[str, str], target: 'ModExtractInfo') -> 'ModExtractInfo':
+    def _map(source_data: dict[str, str], target: "ModExtractInfo") -> "ModExtractInfo":
         target.checksum = source_data["checksum"]
         target.game_version = source_data["game_version"]
         return target
 
     @staticmethod
-    def serialize(mod_extract_info: 'ModExtractInfo', json_file: Path):
+    def serialize(mod_extract_info: "ModExtractInfo", json_file: Path):
         with json_file.open("w") as json_io:
             extract_data = mod_extract_info._extract_data()
             json.dump(extract_data, json_io)
     
     @staticmethod
-    def serializes(mod_extract_info: 'ModExtractInfo') -> str:
+    def serializes(mod_extract_info: "ModExtractInfo") -> str:
         extract_data = mod_extract_info._extract_data()
         return json.dumps(extract_data)
     
     @staticmethod
-    def deserialize(json_file: Path) -> 'ModExtractInfo':
+    def deserialize(json_file: Path) -> "ModExtractInfo":
         if not json_file.exists():
             return ModExtractInfo()
         with json_file.open("r") as json_io:
@@ -104,7 +104,7 @@ class ModExtractInfo():
             return mod_extract_info
     
     @staticmethod
-    def deserializes(json_text: str) -> 'ModExtractInfo':
+    def deserializes(json_text: str) -> "ModExtractInfo":
         extract_data = json.loads(json_text)
         mod_extract_info: ModExtractInfo = ModExtractInfo._map(extract_data, ModExtractInfo())
         return mod_extract_info
