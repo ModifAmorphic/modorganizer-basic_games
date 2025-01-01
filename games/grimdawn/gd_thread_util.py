@@ -1,4 +1,5 @@
-from typing import Callable
+# pyright: reportUnknownMemberType=false
+from typing import Any, Callable
 
 from PyQt6.QtCore import QObject, QRunnable, QThread, pyqtSignal, qDebug
 
@@ -13,16 +14,49 @@ class Task(QObject, QRunnable):
 
     def __init__(self):
         super().__init__()
-    
-    def run(self): ...
+
+    def run(self):
+        ...
+
+    def started_connect(
+        self, slot: Callable[[], Any | None] | Callable[[Progress], Any | None]
+    ):
+        self.started.connect(slot)
+
+    def progress_connect(
+        self, slot: Callable[[], Any | None] | Callable[[Progress], Any | None]
+    ):
+        self.progress.connect(slot)
+
+    def finished_connect(
+        self, slot: Callable[[], Any | None] | Callable[[Progress], Any | None]
+    ):
+        self.finished.connect(slot)
+
 
 class MultiStepTask(Task):
-    started = pyqtSignal(MultiStepProgress)
+    started: pyqtSignal = pyqtSignal(MultiStepProgress)
     progress = pyqtSignal(MultiStepProgress)
     finished = pyqtSignal(MultiStepProgress)
 
     def __init__(self):
         super(MultiStepTask, self).__init__()
+
+    def started_connect(
+        self, slot: Callable[[], Any | None] | Callable[[MultiStepProgress], Any | None]
+    ):
+        self.started.connect(slot)
+
+    def progress_connect(
+        self, slot: Callable[[], Any | None] | Callable[[MultiStepProgress], Any | None]
+    ):
+        self.progress.connect(slot)
+
+    def finished_connect(
+        self, slot: Callable[[], Any | None] | Callable[[MultiStepProgress], Any | None]
+    ):
+        self.finished.connect(slot)
+
 
 class TaskMaster:
     _parent: QObject | None
@@ -30,11 +64,20 @@ class TaskMaster:
     _task: Task
     _task_started: bool
     _is_finished: bool
-    def thread(self): 
-        return self._thread
-    def task(self): return self._task
 
-    def __init__(self, task: Task, parent: QObject | None = None, progress_dialog: GdProgressDialog | None = None, **kwargs):
+    def thread(self):
+        return self._thread
+
+    def task(self):
+        return self._task
+
+    def __init__(
+        self,
+        task: Task,
+        parent: QObject | None = None,
+        progress_dialog: GdProgressDialog | None = None,
+        **kwargs: dict[str, Any],
+    ):
         super(TaskMaster, self).__init__(**kwargs)
         self._task_started = False
         self._is_finished = False
@@ -49,56 +92,65 @@ class TaskMaster:
         task.moveToThread(thread)
         thread.started.connect(task.run)
         # task.finished.connect(task.deleteLater)
-        task.finished.connect(task.deleteLater)
-        task.finished.connect(thread.quit)
+        task.finished_connect(task.deleteLater)
+        task.finished_connect(thread.quit)
         thread.finished.connect(self._set_is_finished)
         # thread.finished.connect(thread.deleteLater)
 
         return thread, task
-    
+
     def _set_is_finished(self):
         self._is_finished = True
 
     def bind_dialog(self, dialog: GdProgressDialog):
         qDebug("Binding progress dialog to TaskMaster")
         if isinstance(self._task, MultiStepTask):
-            self._task.progress.connect(dialog.on_step_update)
-            self._task.finished.connect(dialog.on_steps_finished)
+            self._task.progress_connect(dialog.on_step_update)
+            self._task.finished_connect(dialog.on_steps_finished)
         else:
-            self._task.progress.connect(dialog.on_progress_update)
-            self._task.finished.connect(dialog.on_finished)
-        
+            self._task.progress_connect(dialog.on_progress_update)
+            self._task.finished_connect(dialog.on_finished)
+
         return dialog
 
     def start_task(self) -> QThread:
         if self._task_started:
-            raise RuntimeError("Task has already been started. Tasks can only be ran once.")
+            raise RuntimeError(
+                "Task has already been started. Tasks can only be ran once."
+            )
         self._thread.start()
         self._task_started = True
         return self.thread()
-    
-    def is_started(self): return self._task_started
-    def is_finished(self): return self._is_finished
-    
-    
-    
+
+    def is_started(self):
+        return self._task_started
+
+    def is_finished(self):
+        return self._is_finished
+
+
 class SimpleTask[T](TaskMaster, Task):
-    started = pyqtSignal(Progress)
-    progress = pyqtSignal(Progress)
-    finished = pyqtSignal(Progress)
     result = pyqtSignal(object)
     _result: T
 
-    
-    def __init__(self, runnable: Callable[[], T], start_msg: str = "Started", finish_msg: str = "Finished", parent: QObject | None = None, progress_dialog: GdProgressDialog | None = None):
+    def __init__(
+        self,
+        runnable: Callable[[], T],
+        start_msg: str = "Started",
+        finish_msg: str = "Finished",
+        parent: QObject | None = None,
+        progress_dialog: GdProgressDialog | None = None,
+    ):
         # qDebug("Initializing SimpleTask")
-        super(SimpleTask, self).__init__(task=self, parent=parent, progress_dialog=progress_dialog)
+        super(SimpleTask, self).__init__(
+            task=self, parent=parent, progress_dialog=progress_dialog
+        )
         # super(SimpleTask, self).__init__()
         self._runnable = runnable
         self._start_msg = start_msg
         self._finish_msg = finish_msg
         # qDebug(f"Done initializing SimpleTask with runnable {self._runnable}")
-    
+
     def run(self):
         qDebug(f"Starting runnable task {self._runnable}")
         self.started.emit(Progress(0, 1, self._start_msg))
@@ -106,5 +158,9 @@ class SimpleTask[T](TaskMaster, Task):
         self.result.emit(self._result)
         self.finished.emit(Progress(1, 1, self._finish_msg))
         # qDebug("Runnable task finished")
-    
-    def task_result(self) -> T: return self._result
+
+    def task_result(self) -> T:
+        return self._result
+
+    def result_connect(self, slot: Callable[[T], None | Any]):
+        self.result.connect(slot)

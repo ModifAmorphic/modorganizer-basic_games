@@ -14,8 +14,11 @@ class HashUtil:
         return hash
 
     @staticmethod
-    def hash_directory(directory: Union[str, Path], 
-                    hash: blake2b | None = None, recursive: bool = False) -> blake2b:
+    def hash_directory(
+        directory: Union[str, Path],
+        hash: blake2b | None = None,
+        recursive: bool = False,
+    ) -> blake2b:
         assert Path(directory).is_dir()
         if not hash:
             hash = blake2b(digest_size=32)
@@ -27,7 +30,8 @@ class HashUtil:
             elif path.is_dir() and recursive:
                 hash = HashUtil.hash_directory(path, hash, recursive)
         return hash
-    
+
+
 class PathUtil:
     @staticmethod
     def move_tree(source_dir: Path, dest_dir: Path, remove_source_dir: bool = False):
@@ -36,7 +40,7 @@ class PathUtil:
             # Recreate all directories in the destination
             rel_path = root.relative_to(source_dir)
             for name in dirs:
-                dest_path = (dest_dir / rel_path / name)
+                dest_path = dest_dir / rel_path / name
                 # qDebug(f"Creating Dir: {dest_path}, name: {name}")
                 dest_path.mkdir(parents=True, exist_ok=True)
 
@@ -47,13 +51,13 @@ class PathUtil:
             for name in files:
                 source_path = root / name
                 rel_path = root.relative_to(source_dir)
-                dest_path = (dest_dir / rel_path / name)
+                dest_path = dest_dir / rel_path / name
                 # qDebug(f"Moving file to: {dest_path}, name: {name}")
                 source_path.replace(dest_path)
-            #Cleanup empty source directories
+            # Cleanup empty source directories
             for name in dirs:
                 (root / name).rmdir()
-        
+
         if remove_source_dir:
             source_dir.rmdir()
 
@@ -61,20 +65,21 @@ class PathUtil:
     def delete_contents(directory: Path, delete_directory: bool = False):
         """
         Deletes all files and folders in the directory path.
-        
+
         Arguments:
             directory (Path): The directory whose contents should be removed.
             delete_directory (bool): (Optional) If True, also removes the directory Path in the first argument. Default is False.
         """
         if not directory.is_dir():
-            raise ValueError("Invalid argument Path. directory argument must be an actual directory.")
-        
+            raise ValueError(
+                "Invalid argument Path. directory argument must be an actual directory."
+            )
+
         for root, dirs, files in directory.walk(top_down=False):
             for name in files:
                 (root / name).unlink()
             for name in dirs:
-                (root / name).rmdir()    
+                (root / name).rmdir()
 
         if delete_directory:
             directory.rmdir()
-    

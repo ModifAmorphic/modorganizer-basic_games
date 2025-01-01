@@ -8,10 +8,10 @@ from .gd_data import MultiStepProgress, Progress
 
 
 class GdProgressDialog(QProgressDialog):
-    class Closed():
+    class Closed:
         _callbacks: list[Callable[[], None]] = []
 
-        def callbacks(self): 
+        def callbacks(self):
             return self._callbacks
 
         def connect(self, callable: Callable[[], None] | None):
@@ -24,14 +24,17 @@ class GdProgressDialog(QProgressDialog):
     _parent: QWidget | None
     _delay_close_msec: int
     _auto_close: bool
-    def __init__(self, 
-                 parent: QWidget | None = None, 
-                 labelText: str = "Processing...",
-                 allowCancel: bool = True, 
-                 cancelButtonText: str = "Cancel",
-                 delayShowMsec: int = 500,
-                 delayCloseMsec: int = 0,
-                 autoClose: bool = True) -> None: 
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        labelText: str = "Processing...",
+        allowCancel: bool = True,
+        cancelButtonText: str = "Cancel",
+        delayShowMsec: int = 500,
+        delayCloseMsec: int = 0,
+        autoClose: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.setLabelText(labelText)
         self._auto_close = autoClose
@@ -46,30 +49,66 @@ class GdProgressDialog(QProgressDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
     def on_step_update(self, progress_update: MultiStepProgress):
-        msg = progress_update.step_status_msg() + os.linesep + progress_update.status_message()
-        
-        if self._auto_close and progress_update.step_progress() == progress_update.step_max_progress():
+        msg = (
+            progress_update.step_status_msg()
+            + os.linesep
+            + progress_update.status_message()
+        )
+
+        if (
+            self._auto_close
+            and progress_update.step_progress() == progress_update.step_max_progress()
+        ):
             if progress_update.progress() == progress_update.max_progress():
-                self._on_finished(progress_update.progress(), progress_update.max_progress(), msg)
+                self._on_finished(
+                    progress_update.progress(), progress_update.max_progress(), msg
+                )
                 return
-        
-        self._update_progress(progress_update.progress(), progress_update.max_progress(), msg)
-        
+
+        self._update_progress(
+            progress_update.progress(), progress_update.max_progress(), msg
+        )
+
     def on_steps_finished(self, progress_update: MultiStepProgress):
-        msg = progress_update.step_status_msg() + os.linesep + progress_update.status_message()
-        self._on_finished(progress_update.step_progress(), progress_update.step_max_progress(), msg)
+        msg = (
+            progress_update.step_status_msg()
+            + os.linesep
+            + progress_update.status_message()
+        )
+        self._on_finished(
+            progress_update.step_progress(), progress_update.step_max_progress(), msg
+        )
 
     def on_progress_update(self, progress_update: Progress):
-        if self._auto_close and progress_update.progress() == progress_update.max_progress():
-            self._on_finished(progress_update.progress(), progress_update.max_progress(), progress_update.status_message())
+        if (
+            self._auto_close
+            and progress_update.progress() == progress_update.max_progress()
+        ):
+            self._on_finished(
+                progress_update.progress(),
+                progress_update.max_progress(),
+                progress_update.status_message(),
+            )
         else:
-            self._update_progress(progress_update.progress(), progress_update.max_progress(), progress_update.status_message())
-        
+            self._update_progress(
+                progress_update.progress(),
+                progress_update.max_progress(),
+                progress_update.status_message(),
+            )
 
     def on_finished(self, progress_update: Progress):
-        self._on_finished(progress_update.progress(), progress_update.max_progress(), progress_update.status_message())
+        self._on_finished(
+            progress_update.progress(),
+            progress_update.max_progress(),
+            progress_update.status_message(),
+        )
 
-    def _update_progress(self, progress: Optional[int], max_progress: Optional[int], message: Optional[str]):
+    def _update_progress(
+        self,
+        progress: Optional[int],
+        max_progress: Optional[int],
+        message: Optional[str],
+    ):
         if progress:
             self.setValue(progress)
         if max_progress:
@@ -77,7 +116,12 @@ class GdProgressDialog(QProgressDialog):
         if message:
             self.setLabelText(message)
 
-    def _on_finished(self, progress: Optional[int], max_progress: Optional[int], message: Optional[str]):
+    def _on_finished(
+        self,
+        progress: Optional[int],
+        max_progress: Optional[int],
+        message: Optional[str],
+    ):
         # If a delay is set, then delay closing
         if self._delay_close_msec:
             # If set to autoclose and progress is 100%, then disable autoClose before setting progress to avoid the dialog closing itself immediately.
@@ -85,10 +129,12 @@ class GdProgressDialog(QProgressDialog):
                 self.setAutoClose(False)
             self._update_progress(progress, max_progress, message)
             # Schedule this dialog to be closed
-            qDebug(f"Delaying close of progress window by {self._delay_close_msec} ms. autoClose={self.autoClose()}")
-            QTimer(self).singleShot(self._delay_close_msec, self._close)
+            qDebug(
+                f"Delaying close of progress window by {self._delay_close_msec} ms. autoClose={self.autoClose()}"
+            )
+            QTimer(self).singleShot(self._delay_close_msec, self._close)  # type: ignore
             return
-        
+
         self._update_progress(progress, max_progress, message)
         if (progress and progress != max_progress) or not self.autoClose():
             self._close()

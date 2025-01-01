@@ -3,7 +3,6 @@ from hashlib import blake2b
 from pathlib import Path
 from typing import override
 
-from PyQt6.QtWidgets import QMainWindow
 from mobase import (
     ExecutableForcedLoadSetting,
     ExecutableInfo,
@@ -11,11 +10,19 @@ from mobase import (
     IOrganizer,
     ModState,
 )
-from PyQt6.QtCore import QDir, QFileInfo, qDebug, qInfo, QTimer
+from PyQt6.QtCore import QDir, QFileInfo, QTimer, qDebug, qInfo
+from PyQt6.QtWidgets import QMainWindow
 
 from ..basic_game import BasicGame
-from .grimdawn import GD, GrimDawnModDataChecker, ModExtractor, GdProgressDialog, HashUtil, TaskMaster, SimpleTask
-
+from .grimdawn import (
+    GD,
+    GdProgressDialog,
+    GrimDawnModDataChecker,
+    HashUtil,
+    ModExtractor,
+    SimpleTask,
+    TaskMaster,
+)
 
 
 class GrimDawnGame(BasicGame):
@@ -32,7 +39,7 @@ class GrimDawnGame(BasicGame):
     GameIniFiles = ", ".join(GD.INI_FILES)
     GameSavesDirectory = GD.SAVE_DIR
     GameSaveExtension = GD.GAME_SAVE_EXT
-    
+
     _organizer: IOrganizer
     _mo_main_window: QMainWindow
     _task_masters: list[TaskMaster]
@@ -45,16 +52,19 @@ class GrimDawnGame(BasicGame):
     @override
     def init(self, organizer: IOrganizer) -> bool:
         super().init(organizer)
-        
+
         self._organizer = organizer
-        self._gd = GD(self.gameDirectory().absolutePath(), str(Path(organizer.pluginDataPath()).joinpath(self.GameShortName)))
+        self._gd = GD(
+            self.gameDirectory().absolutePath(),
+            str(Path(organizer.pluginDataPath()).joinpath(self.GameShortName)),
+        )
         self._task_masters: list[TaskMaster] = []
         qDebug("Registering feature GrimDawnModDataChecker()")
         self._register_feature(GrimDawnModDataChecker())
         qInfo(
             f"{self.GameName} plugin init. basePath: {organizer.basePath()}, Data directory: {self.dataDirectory().absolutePath()}, PluginDataPath: {organizer.pluginDataPath()}, downloadsPath: {organizer.downloadsPath()}"
         )
-       
+
         self._gd.GAME_ROOT_EXTRACT_PATH().mkdir(parents=False, exist_ok=True)
         self._gd.GAME_DATA_EXTRACT_PATH().mkdir(parents=False, exist_ok=True)
         self._gd.MODS_DATA_EXTRACT_PATH().mkdir(parents=False, exist_ok=True)
@@ -65,7 +75,7 @@ class GrimDawnGame(BasicGame):
         organizer.modList().onModRemoved(self._onModRemoved)
 
         self._tm_monitor = QTimer()
-        self._tm_monitor.timeout.connect(self._gc_task_managers)
+        self._tm_monitor.timeout.connect(self._gc_task_managers)  # type: ignore
         self._tm_monitor.start(1000)
         return True
 
@@ -77,7 +87,7 @@ class GrimDawnGame(BasicGame):
         #     tm.thread().deleteLater()
 
         f_count = len(finished)
-        if (f_count):
+        if f_count:
             qDebug(f"Removed references to {f_count} TaskMaster instances.")
 
     @override
@@ -106,7 +116,7 @@ class GrimDawnGame(BasicGame):
                 QFileInfo(self.gameDirectory().absoluteFilePath(self.binaryName())),
             ).withArgument("/basemods"),
         ]
-    
+
     @override
     def executableForcedLoads(self) -> list[ExecutableForcedLoadSetting]:
         return [
@@ -120,8 +130,8 @@ class GrimDawnGame(BasicGame):
     #####     Private Methods     #####
     def _onUserInterfaceInitialized(self, main_window: QMainWindow):
         self._mo_main_window = main_window
-        # self._extract_grim_dawn(main_window)
-    
+        self._extract_grim_dawn(main_window)
+
     # When a new mod is installed, extract everything and..
     # - for databases: create "diff" files that only include changes from the unmodded game files
     def _onModInstalled(self, mod: IModInterface):
@@ -134,20 +144,34 @@ class GrimDawnGame(BasicGame):
             databases.append(db)
 
         extractor = ModExtractor(self._gd.GAME_DIRECTORY(), databases, mod_unpack_path)
-        progress_dialog = GdProgressDialog(self._mo_main_window, allowCancel=False, delayCloseMsec=500, delayShowMsec=0, autoClose=False)
+        progress_dialog = GdProgressDialog(
+            self._mo_main_window,
+            allowCancel=False,
+            delayCloseMsec=500,
+            delayShowMsec=0,
+            autoClose=False,
+        )
         task_master = TaskMaster(extractor, progress_dialog=progress_dialog)
         # self.progress_dialog.closed.connect(self._unload_task_master)
-        task_master.task().finished.connect(lambda: self._create_hash(mod_unpack_path))
+        task_master.task().finished_connect(lambda: self._create_hash(mod_unpack_path))
         task_master.start_task()
         self._task_masters.append(task_master)
-        
-       
+
     def _create_hash(self, mod_unpack_path: Path):
-        
-        hash_dialog = GdProgressDialog(self._mo_main_window, allowCancel=False, delayCloseMsec=500, delayShowMsec=0, autoClose=False)
-        simple_task = SimpleTask(lambda: HashUtil.hash_directory(mod_unpack_path, recursive=True), f"Calculating checksum for mod {mod_unpack_path}", progress_dialog=hash_dialog)
+        hash_dialog = GdProgressDialog(
+            self._mo_main_window,
+            allowCancel=False,
+            delayCloseMsec=500,
+            delayShowMsec=0,
+            autoClose=False,
+        )
+        simple_task = SimpleTask(
+            lambda: HashUtil.hash_directory(mod_unpack_path, recursive=True),
+            f"Calculating checksum for mod {mod_unpack_path}",
+            progress_dialog=hash_dialog,
+        )
         self._task_masters.append(simple_task)
-        simple_task.result.connect(self._write_hash)
+        simple_task.result_connect(self._write_hash)
         simple_task.start_task()
 
     def _write_hash(self, hash: blake2b):
@@ -174,8 +198,18 @@ class GrimDawnGame(BasicGame):
         return True
 
     def _extract_grim_dawn(self, main_window: QMainWindow):
-        extractor = ModExtractor(self._gd.GAME_DIRECTORY(), self._gd.GAME_DATABASE_PATHS(), self._gd.GAME_DB_EXTRACT_PATH())
-        progress_dialog = GdProgressDialog(self._mo_main_window, allowCancel=False, delayCloseMsec=500, delayShowMsec=0, autoClose=False)
+        extractor = ModExtractor(
+            self._gd.GAME_DIRECTORY(),
+            self._gd.GAME_DATABASE_PATHS(),
+            self._gd.GAME_DB_EXTRACT_PATH(),
+        )
+        progress_dialog = GdProgressDialog(
+            self._mo_main_window,
+            allowCancel=False,
+            delayCloseMsec=500,
+            delayShowMsec=0,
+            autoClose=False,
+        )
         task_master = TaskMaster(extractor, progress_dialog=progress_dialog)
         task_master.start_task()
         self._task_masters.append(task_master)
