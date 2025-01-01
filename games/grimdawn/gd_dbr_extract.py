@@ -200,11 +200,15 @@ class ModExtractor(MultiStepTask):
         for db in database_extracts:
             process = process_pool[db]
             extract_paths: ExtractPaths = database_extracts[db]
-            process.finished.connect(                                                       # type: ignore
-                lambda exitCode,                                                            # type: ignore
-                exitStatus,                                                                 # type: ignore
-                ex_paths=extract_paths: self._on_extract_complete(                          
-                    exitCode, exitStatus, ex_paths, remaining_dbs, database_extracts        # type: ignore
+            process.finished.connect(  # type: ignore
+                lambda exitCode,  # type: ignore
+                exitStatus,  # type: ignore
+                ex_paths=extract_paths: self._on_extract_complete(
+                    exitCode,
+                    exitStatus,
+                    ex_paths,
+                    remaining_dbs,
+                    database_extracts,  # type: ignore
                 )
             )  # type: ignore
 
